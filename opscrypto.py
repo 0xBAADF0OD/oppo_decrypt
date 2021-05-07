@@ -5,6 +5,7 @@
 Usage:
     opscrypto.py --help
     opscrypto.py decryptfile <filename>
+    opscrypto.py encryptfile <filename>
     opscrypto.py decrypt <filename>
 
 Options:
@@ -103,7 +104,7 @@ def key_update(iv1,asbox):
              (gsbox((i >> 0x18) * 8 + 3) & 0xff000000) ^ (gsbox((a & 0xff) * 8 + 2)&0xFF) ^ asbox[g+1]
     return iv2
 
-def key_custom(inp,key,outlength=0):
+def key_custom(inp,key,outlength=0, encrypt=False):
     outp=bytearray()
     inp=bytearray(inp)
     pos=outlength
@@ -130,7 +131,10 @@ def key_custom(inp,key,outlength=0):
                 while(i!=0):
                     tmp=unpack("<I",inp[j+ptr:j+ptr+4])[0]
                     outp.extend(pack("<I",tmp^key[m]))
-                    key[m]=tmp
+                    if encrypt:
+                        key[m] = tmp ^ key[m]
+                    else:
+                        key[m]=tmp
                     i-=1
                     j+=4
                     m+=1
@@ -167,6 +171,8 @@ def extractxml(filename,key):
             xmllength=unpack("<I",hdr[0x18:0x18+4])[0]
             xmlpad=0x200-(xmllength%0x200)
             rf.seek(filesize-0x200-(xmllength+xmlpad))
+            print("xml: %x" % (filesize-0x200-(xmllength+xmlpad)))
+            #sys.exit(0)
             inp=rf.read(xmllength+xmlpad)
             outp=key_custom(inp,key)
             wf.write(outp[:xmllength])
@@ -181,6 +187,17 @@ def decryptfile(key,filename,path,wfilename,start,length):
             if length%4:
                 data+=(4-(length%4))*b'\x00'
             outp = key_custom(data, key)
+            wf.write(outp[:length])
+            
+def encryptfile(key,filename,path,wfilename,start,length):
+    print(f"Extracting {wfilename}")
+    with open(filename, 'rb') as rf:
+        with open(os.path.join(path, wfilename), 'wb') as wf:
+            rf.seek(start)
+            data=rf.read(length)
+            if length%4:
+                data+=(4-(length%4))*b'\x00'
+            outp = key_custom(data, key, encrypt=True)
             wf.write(outp[:length])
 
 def copysub(rf,wf,start,length):
@@ -232,7 +249,7 @@ def copyitem(item,directory,pos,wf):
 
 def main():
     global mbox
-    print("Oppo CryptTools V1.2 (c) B. Kerler 2019-2020\nMIT License\n----------------------------\n")
+    print("Oppo CryptTools V1.2 (c) B. Kerler 2019-2020\nForked and Modified by craznazn@xda (c) 2021\nMIT License\n----------------------------\n")
     if args["decrypt"]:
         filename = args["<filename>"].replace("\\", "/")
         if "/" in filename:
@@ -255,6 +272,7 @@ def main():
             except:
                  print("Unsupported key !")
                  exit(0)
+        #print(xml)
         root = ET.fromstring(xml)
         for child in root:
             if child.tag == "SAHARA":
@@ -301,6 +319,12 @@ def main():
         mbox = mbox5
         fsize=os.stat(filename).st_size
         decryptfile(key,filename,"",filename+".dec",0,fsize)
+        print("Done.")
+    elif args["encryptfile"]:
+        filename = args["<filename>"].replace("\\", "/")
+        mbox = mbox5
+        fsize=os.stat(filename).st_size
+        encryptfile(key,filename,"",filename+".enc",0,fsize)
         print("Done.")
     else:
         print("Usage:./opsdecrypt.py decrypt [filename.ops]")
